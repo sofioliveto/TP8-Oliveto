@@ -64,12 +64,12 @@ El primer paso fue configurar Jest para generar reportes de cobertura de código
 #### Backend - Cobertura
 Al ejecutar `npm test -- --coverage` por primera vez, obtuvimos:
 
-[alt text](images/image2.png)
+![alt text](images/image2.png)
 
 
 #### Frontend - Cobertura Inicial
 El frontend mostró cobertura deficiente en funciones:
-[alt text](images/image3.png)
+![alt text](images/image3.png)
 
 **Problemas:**
 - ❌ Functions coverage: 62.50% (5/8 funciones)
@@ -83,7 +83,7 @@ Se implementaron tests adicionales para `eliminarPalabra` y validaciones.
 - ✅ Functions: 62.50% → 75% (+12.5%)
 - ✅ Cumple threshold de 70% en todas las métricas
 
-[alt text](images/image4.png)
+![alt text](images/image4.png)
 
 ### 3. Visualización de Coverage
 
@@ -265,16 +265,16 @@ El pipeline se divide en **3 stages principales**:
 Los resultados se publican en la pestaña **Tests** de Azure DevOps:
 
 **Tests Unitarios:**
-![Resultados Tests Unitarios](testunit.png)
+![Resultados Tests Unitarios](images/testunit.png)
 
 **Code Coverage:**
-![Resultados Coverage](coverage.png)
+![Resultados Coverage](images/coverage.png)
 
 **SonarCloud Quality Gate:**
-![Resultados Sonar](sonar.png)
+![Resultados Sonar](images/sonar.png)
 
 **Tests E2E (Cypress):**
-![Resultados E2E](e2e.png)
+![Resultados E2E](images/e2e.png)
 
 ---
 
