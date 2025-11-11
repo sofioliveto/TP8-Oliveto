@@ -59,13 +59,12 @@ stages:
             testRunTitle: 'Backend Unit Tests'
 
         # Publicar coverage del backend
-        - task: PublishCodeCoverageResults@1
+        - task: PublishCodeCoverageResults@2
           displayName: "Publish Backend Coverage"
           condition: succeededOrFailed()
           inputs:
-            codeCoverageTool: 'Cobertura'
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/backend/coverage/cobertura-coverage.xml'
-            reportDirectory: '$(System.DefaultWorkingDirectory)/backend/coverage'
+            pathToSources: '$(System.DefaultWorkingDirectory)/backend'
             failIfCoverageEmpty: false
 
         # Verificar threshold del backend (Jest ya falla si no cumple)
@@ -139,13 +138,12 @@ stages:
             testRunTitle: 'Frontend Unit Tests'
 
         # Publicar coverage del frontend
-        - task: PublishCodeCoverageResults@1
+        - task: PublishCodeCoverageResults@2
           displayName: "Publish Frontend Coverage"
           condition: succeededOrFailed()
           inputs:
-            codeCoverageTool: 'Cobertura'
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/frontend/coverage/cobertura-coverage.xml'
-            reportDirectory: '$(System.DefaultWorkingDirectory)/frontend/coverage'
+            pathToSources: '$(System.DefaultWorkingDirectory)/frontend'
             failIfCoverageEmpty: false
 
         # Verificar threshold del frontend
