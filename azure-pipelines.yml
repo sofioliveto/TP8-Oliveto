@@ -65,7 +65,7 @@ stages:
           inputs:
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/backend/coverage/cobertura-coverage.xml'
             pathToSources: '$(System.DefaultWorkingDirectory)/backend'
-            failIfCoverageEmpty: false
+            failIfCoverageEmpty: true
 
         # Verificar threshold del backend (Jest ya falla si no cumple)
         - script: |
@@ -144,7 +144,7 @@ stages:
           inputs:
             summaryFileLocation: '$(System.DefaultWorkingDirectory)/frontend/coverage/cobertura-coverage.xml'
             pathToSources: '$(System.DefaultWorkingDirectory)/frontend'
-            failIfCoverageEmpty: false
+            failIfCoverageEmpty: true
 
         # Verificar threshold del frontend
         - script: |
