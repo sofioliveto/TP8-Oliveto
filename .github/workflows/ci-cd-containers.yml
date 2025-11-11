@@ -22,6 +22,9 @@ jobs:
     name: 'Build & Test (Unit Tests + Coverage)'
     runs-on: ubuntu-latest
     
+    permissions:
+      contents: read
+    
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -182,6 +185,10 @@ jobs:
     name: 'Deploy to QA Environment'
     runs-on: ubuntu-latest
     needs: build-and-push-images
+    
+    permissions:
+      contents: read
+    
     environment:
       name: QA
       url: ${{ secrets.RENDER_QA_BACKEND_URL }}
@@ -246,6 +253,9 @@ jobs:
     runs-on: ubuntu-latest
     needs: deploy-qa
     
+    permissions:
+      contents: read
+    
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v4
@@ -286,6 +296,10 @@ jobs:
     name: 'Deploy to PRODUCTION'
     runs-on: ubuntu-latest
     needs: integration-tests-qa
+    
+    permissions:
+      contents: read
+    
     environment:
       name: Production
       url: ${{ secrets.RENDER_PROD_BACKEND_URL }}
