@@ -1,0 +1,365 @@
+name: 'TP8: CI/CD with Containers'
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:  # Allow manual triggers
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ${{ github.repository }}/backend
+  IMAGE_NAME_FRONTEND: ${{ github.repository }}/frontend
+
+jobs:
+  # ==========================================
+  # JOB 1: Build and Test
+  # ==========================================
+  build-and-test:
+    name: 'Build & Test (Unit Tests + Coverage)'
+    runs-on: ubuntu-latest
+    
+    permissions:
+      contents: read
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: |
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      # ========== BACKEND TESTS ==========
+      - name: 📦 Install Backend dependencies
+        working-directory: backend
+        run: npm ci
+
+      - name: 🧪 Run Backend Unit Tests + Coverage
+        working-directory: backend
+        run: npm test -- --coverage --ci
+
+      - name: 📊 Verify Backend Coverage Threshold
+        working-directory: backend
+        run: |
+          if [ -f "coverage/coverage-summary.json" ]; then
+            LINES_PCT=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+            STATEMENTS_PCT=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
+            FUNCTIONS_PCT=$(cat coverage/coverage-summary.json | jq '.total.functions.pct')
+            BRANCHES_PCT=$(cat coverage/coverage-summary.json | jq '.total.branches.pct')
+            
+            echo "Backend Coverage:"
+            echo "  Lines: ${LINES_PCT}%"
+            echo "  Statements: ${STATEMENTS_PCT}%"
+            echo "  Functions: ${FUNCTIONS_PCT}%"
+            echo "  Branches: ${BRANCHES_PCT}%"
+            
+            AVG=$(echo "scale=2; ($LINES_PCT + $STATEMENTS_PCT + $FUNCTIONS_PCT + $BRANCHES_PCT) / 4" | bc)
+            echo "  Average: ${AVG}%"
+            
+            if (( $(echo "$AVG < 70" | bc -l) )); then
+              echo "❌ Backend coverage ($AVG%) is below 70%"
+              exit 1
+            fi
+            echo "✅ Backend coverage meets 70% threshold"
+          fi
+
+      # ========== FRONTEND TESTS ==========
+      - name: 📦 Install Frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: 🧪 Run Frontend Unit Tests + Coverage
+        working-directory: frontend
+        run: npm test -- --coverage --ci
+
+      - name: 📊 Verify Frontend Coverage Threshold
+        working-directory: frontend
+        run: |
+          if [ -f "coverage/coverage-summary.json" ]; then
+            LINES_PCT=$(cat coverage/coverage-summary.json | jq '.total.lines.pct')
+            STATEMENTS_PCT=$(cat coverage/coverage-summary.json | jq '.total.statements.pct')
+            FUNCTIONS_PCT=$(cat coverage/coverage-summary.json | jq '.total.functions.pct')
+            BRANCHES_PCT=$(cat coverage/coverage-summary.json | jq '.total.branches.pct')
+            
+            echo "Frontend Coverage:"
+            echo "  Lines: ${LINES_PCT}%"
+            echo "  Statements: ${STATEMENTS_PCT}%"
+            echo "  Functions: ${FUNCTIONS_PCT}%"
+            echo "  Branches: ${BRANCHES_PCT}%"
+            
+            AVG=$(echo "scale=2; ($LINES_PCT + $STATEMENTS_PCT + $FUNCTIONS_PCT + $BRANCHES_PCT) / 4" | bc)
+            echo "  Average: ${AVG}%"
+            
+            if (( $(echo "$AVG < 70" | bc -l) )); then
+              echo "❌ Frontend coverage ($AVG%) is below 70%"
+              exit 1
+            fi
+            echo "✅ Frontend coverage meets 70% threshold"
+          fi
+
+  # ==========================================
+  # JOB 2: Build and Push Docker Images
+  # ==========================================
+  build-and-push-images:
+    name: 'Build & Push Docker Images to GHCR'
+    runs-on: ubuntu-latest
+    needs: build-and-test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    outputs:
+      image-tag: ${{ steps.meta.outputs.tags }}
+      image-version: ${{ steps.version.outputs.version }}
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🏷️ Generate version tag
+        id: version
+        run: |
+          # Use commit SHA short + timestamp for versioning
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+          VERSION="v1.0.${GITHUB_RUN_NUMBER}-${SHORT_SHA}"
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Generated version: ${VERSION}"
+
+      - name: 🐳 Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: 🔐 Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # ========== BUILD BACKEND IMAGE ==========
+      - name: 🏗️ Build and Push Backend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./docker/backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.version.outputs.version }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:buildcache,mode=max
+
+      # ========== BUILD FRONTEND IMAGE ==========
+      - name: 🏗️ Build and Push Frontend Image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./docker/frontend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.version.outputs.version }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:buildcache
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:buildcache,mode=max
+
+      - name: ✅ Images pushed successfully
+        run: |
+          echo "Backend image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ steps.version.outputs.version }}"
+          echo "Frontend image: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ steps.version.outputs.version }}"
+
+  # ==========================================
+  # JOB 3: Deploy to QA (Render.com)
+  # ==========================================
+  deploy-qa:
+    name: 'Deploy to QA Environment'
+    runs-on: ubuntu-latest
+    needs: build-and-push-images
+    
+    permissions:
+      contents: read
+    
+    environment:
+      name: QA
+      url: ${{ secrets.RENDER_QA_BACKEND_URL }}
+    
+    steps:
+      - name: 🚀 Trigger Render Deploy (Backend QA)
+        run: |
+          echo "Deploying backend to QA environment..."
+          curl -X POST "${{ secrets.RENDER_QA_BACKEND_DEPLOY_HOOK }}"
+          
+      - name: 🚀 Trigger Render Deploy (Frontend QA)
+        run: |
+          echo "Deploying frontend to QA environment..."
+          curl -X POST "${{ secrets.RENDER_QA_FRONTEND_DEPLOY_HOOK }}"
+
+      - name: ⏳ Wait for QA deployment to be ready
+        run: |
+          echo "Waiting 60 seconds for Render to deploy..."
+          sleep 60
+
+      - name: 🏥 Health Check - Backend QA
+        run: |
+          MAX_ATTEMPTS=10
+          ATTEMPT=1
+          URL="${{ secrets.RENDER_QA_BACKEND_URL }}/health"
+          
+          echo "Checking backend health at: $URL"
+          
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS..."
+            
+            if curl -f -s "$URL" > /dev/null; then
+              echo "✅ Backend QA is healthy!"
+              exit 0
+            fi
+            
+            echo "⏳ Not ready yet, waiting 10 seconds..."
+            sleep 10
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+          
+          echo "❌ Backend QA health check failed after $MAX_ATTEMPTS attempts"
+          exit 1
+
+      - name: 🏥 Health Check - Frontend QA
+        run: |
+          URL="${{ secrets.RENDER_QA_FRONTEND_URL }}/health"
+          echo "Checking frontend health at: $URL"
+          
+          if curl -f -s "$URL" > /dev/null; then
+            echo "✅ Frontend QA is healthy!"
+          else
+            echo "❌ Frontend QA health check failed"
+            exit 1
+          fi
+
+  # ==========================================
+  # JOB 4: Integration Tests on QA
+  # ==========================================
+  integration-tests-qa:
+    name: 'Run Integration Tests on QA'
+    runs-on: ubuntu-latest
+    needs: deploy-qa
+    
+    permissions:
+      contents: read
+    
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔧 Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: 📦 Install Cypress dependencies
+        run: |
+          npm install --save-dev cypress wait-on @faker-js/faker
+          npx cypress install
+
+      - name: ⏳ Wait for QA to be fully ready
+        run: npx wait-on ${{ secrets.RENDER_QA_BACKEND_URL }} --timeout 120000
+
+      - name: 🧪 Run Cypress E2E Tests against QA
+        run: |
+          npx cypress run \
+            --browser chrome \
+            --headless \
+            --config baseUrl=${{ secrets.RENDER_QA_BACKEND_URL }}
+        env:
+          CYPRESS_BASE_URL: ${{ secrets.RENDER_QA_BACKEND_URL }}
+
+      - name: 📊 Upload Cypress screenshots on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots-qa
+          path: cypress/screenshots
+
+  # ==========================================
+  # JOB 5: Deploy to PROD (Manual Approval)
+  # ==========================================
+  deploy-prod:
+    name: 'Deploy to PRODUCTION'
+    runs-on: ubuntu-latest
+    needs: integration-tests-qa
+    
+    permissions:
+      contents: read
+    
+    environment:
+      name: Production
+      url: ${{ secrets.RENDER_PROD_BACKEND_URL }}
+    
+    steps:
+      - name: 🚀 Trigger Render Deploy (Backend PROD)
+        run: |
+          echo "Deploying backend to PRODUCTION environment..."
+          curl -X POST "${{ secrets.RENDER_PROD_BACKEND_DEPLOY_HOOK }}"
+          
+      - name: 🚀 Trigger Render Deploy (Frontend PROD)
+        run: |
+          echo "Deploying frontend to PRODUCTION environment..."
+          curl -X POST "${{ secrets.RENDER_PROD_FRONTEND_DEPLOY_HOOK }}"
+
+      - name: ⏳ Wait for PROD deployment to be ready
+        run: |
+          echo "Waiting 60 seconds for Render to deploy..."
+          sleep 60
+
+      - name: 🏥 Health Check - Backend PROD
+        run: |
+          MAX_ATTEMPTS=10
+          ATTEMPT=1
+          URL="${{ secrets.RENDER_PROD_BACKEND_URL }}/health"
+          
+          echo "Checking backend health at: $URL"
+          
+          while [ $ATTEMPT -le $MAX_ATTEMPTS ]; do
+            echo "Attempt $ATTEMPT/$MAX_ATTEMPTS..."
+            
+            if curl -f -s "$URL" > /dev/null; then
+              echo "✅ Backend PROD is healthy!"
+              exit 0
+            fi
+            
+            echo "⏳ Not ready yet, waiting 10 seconds..."
+            sleep 10
+            ATTEMPT=$((ATTEMPT + 1))
+          done
+          
+          echo "❌ Backend PROD health check failed after $MAX_ATTEMPTS attempts"
+          exit 1
+
+      - name: 🏥 Health Check - Frontend PROD
+        run: |
+          URL="${{ secrets.RENDER_PROD_FRONTEND_URL }}/health"
+          echo "Checking frontend health at: $URL"
+          
+          if curl -f -s "$URL" > /dev/null; then
+            echo "✅ Frontend PROD is healthy!"
+          else
+            echo "❌ Frontend PROD health check failed"
+            exit 1
+          fi
+
+      - name: 🎉 Deployment completed successfully
+        run: |
+          echo "================================"
+          echo "✅ PRODUCTION DEPLOYMENT SUCCESS"
+          echo "================================"
+          echo "Backend: ${{ secrets.RENDER_PROD_BACKEND_URL }}"
+          echo "Frontend: ${{ secrets.RENDER_PROD_FRONTEND_URL }}"
